@@ -11,14 +11,14 @@ A client-side Minecraft Fabric mod that automatically manages your Elytra and Ch
 
 ## Requirements
 
-*   Minecraft Java Edition **1.21.8**
+*   Minecraft Java Edition **1.21.10**
 *   Fabric Loader
 *   Fabric API
 
 ## Installation
 
 1.  Download the latest release `.jar` file.
-2.  Install [Fabric Loader](https://fabricmc.net/use/installer/) for Minecraft 1.21.8.
+2.  Install [Fabric Loader](https://fabricmc.net/use/installer/) for Minecraft 1.21.10.
 3.  Place the downloaded `.jar` file and the [Fabric API](https://modrinth.com/mod/fabric-api) `.jar` into your `.minecraft/mods` folder.
 4.  Launch Minecraft using the Fabric profile.
 

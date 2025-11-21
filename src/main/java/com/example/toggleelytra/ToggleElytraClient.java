@@ -6,8 +6,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.item.ArmorItem;
-import net.minecraft.item.ElytraItem;
+
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -16,12 +15,14 @@ import net.minecraft.screen.slot.SlotActionType;
 public class ToggleElytraClient implements ClientModInitializer {
 
     private boolean wasJumpPressed = false;
+    private boolean wasOnGroundLastTick = false;
 
     @Override
     public void onInitializeClient() {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             ClientPlayerEntity player = client.player;
-            if (player == null) return;
+            if (player == null)
+                return;
 
             boolean isJumpPressed = client.options.jumpKey.isPressed();
             boolean jumpJustPressed = isJumpPressed && !wasJumpPressed;
@@ -36,10 +37,12 @@ public class ToggleElytraClient implements ClientModInitializer {
                 }
             } else {
                 // Airborne: Toggle on Jump Press
-                if (jumpJustPressed) {
+                // Only toggle if we were NOT on the ground last tick (prevents toggle on jump
+                // takeoff)
+                if (jumpJustPressed && !wasOnGroundLastTick) {
                     if (isElytra(chestItem)) {
                         equipChestplate(client, player);
-                    } else if (isChestplate(chestItem)) {
+                    } else if (isChestplate(chestItem, player)) {
                         equipElytra(client, player);
                     } else {
                         // If wearing nothing or something else, maybe try to equip Elytra first?
@@ -49,6 +52,7 @@ public class ToggleElytraClient implements ClientModInitializer {
                     }
                 }
             }
+            wasOnGroundLastTick = player.isOnGround();
         });
     }
 
@@ -56,9 +60,11 @@ public class ToggleElytraClient implements ClientModInitializer {
         return stack.getItem() == Items.ELYTRA;
     }
 
-    private boolean isChestplate(ItemStack stack) {
-        Item item = stack.getItem();
-        return item instanceof ArmorItem && ((ArmorItem) item).getSlotType() == EquipmentSlot.CHEST;
+    private boolean isChestplate(ItemStack stack, net.minecraft.entity.LivingEntity player) {
+        if (stack.isEmpty())
+            return false;
+        return player.getPreferredEquipmentSlot(stack) == EquipmentSlot.CHEST
+                && !isElytra(stack);
     }
 
     private void equipChestplate(MinecraftClient client, ClientPlayerEntity player) {
@@ -72,28 +78,28 @@ public class ToggleElytraClient implements ClientModInitializer {
         int slot = findElytra(player);
         if (slot != -1) {
             swapChestplate(client, player, slot);
+            // Auto-glide
+            if (client.getNetworkHandler() != null) {
+                client.getNetworkHandler().sendPacket(new net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket(
+                        player, net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket.Mode.START_FALL_FLYING));
+            }
         }
     }
 
     private int findChestplate(ClientPlayerEntity player) {
-        for (int i = 9; i < 45; i++) { // Main inventory + Hotbar
-            ItemStack stack = player.inventory.getStack(i >= 36 ? i - 36 : i); // Mapping might be needed if using raw ID
-            // Actually, player.inventory.main is 0-35.
-            // ScreenHandler slots: 9-35 (Main), 36-44 (Hotbar).
-            // Let's iterate player.inventory directly to find the index, then map to ScreenHandler slot.
-        }
-        
-        // Better approach: Iterate ScreenHandler slots to get the correct ID for clickSlot
+
+        // Better approach: Iterate ScreenHandler slots to get the correct ID for
+        // clickSlot
         // PlayerScreenHandler:
         // 0-4: Crafting
         // 5: Helm, 6: Chest, 7: Legs, 8: Boots
         // 9-35: Main Inventory
         // 36-44: Hotbar
         // 45: Offhand
-        
+
         for (int i = 9; i <= 44; i++) {
             ItemStack stack = player.playerScreenHandler.getSlot(i).getStack();
-            if (isChestplate(stack)) {
+            if (isChestplate(stack, player)) {
                 return i;
             }
         }
@@ -111,18 +117,22 @@ public class ToggleElytraClient implements ClientModInitializer {
     }
 
     private void swapChestplate(MinecraftClient client, ClientPlayerEntity player, int sourceSlot) {
-        if (client.interactionManager == null) return;
-        
+        if (client.interactionManager == null)
+            return;
+
         // 6 is the Chestplate slot in PlayerScreenHandler
         int chestSlot = 6;
-        
+
         // Pick up the item from source
-        client.interactionManager.clickSlot(player.playerScreenHandler.syncId, sourceSlot, 0, SlotActionType.PICKUP, player);
-        
+        client.interactionManager.clickSlot(player.playerScreenHandler.syncId, sourceSlot, 0, SlotActionType.PICKUP,
+                player);
+
         // Place it in chest slot (swaps with current)
-        client.interactionManager.clickSlot(player.playerScreenHandler.syncId, chestSlot, 0, SlotActionType.PICKUP, player);
-        
+        client.interactionManager.clickSlot(player.playerScreenHandler.syncId, chestSlot, 0, SlotActionType.PICKUP,
+                player);
+
         // Place the swapped item back in source
-        client.interactionManager.clickSlot(player.playerScreenHandler.syncId, sourceSlot, 0, SlotActionType.PICKUP, player);
+        client.interactionManager.clickSlot(player.playerScreenHandler.syncId, sourceSlot, 0, SlotActionType.PICKUP,
+                player);
     }
 }
