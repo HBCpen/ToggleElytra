@@ -4,10 +4,9 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.component.DataComponentTypes;
+
 import net.minecraft.entity.EquipmentSlot;
 
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.screen.slot.SlotActionType;
@@ -82,6 +81,7 @@ public class ToggleElytraClient implements ClientModInitializer {
             if (client.getNetworkHandler() != null) {
                 client.getNetworkHandler().sendPacket(new net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket(
                         player, net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket.Mode.START_FALL_FLYING));
+                ((com.example.toggleelytra.mixin.EntityInvoker) player).invokeSetFlag(7, true);
             }
         }
     }
