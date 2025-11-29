@@ -15,9 +15,24 @@ public class ToggleElytraClient implements ClientModInitializer {
 
     private boolean wasJumpPressed = false;
     private boolean wasOnGroundLastTick = false;
+    private static boolean predictionEnabled = true;
 
     @Override
     public void onInitializeClient() {
+        net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback.EVENT
+                .register((dispatcher, registryAccess) -> {
+                    dispatcher.register(
+                            net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal("toggleelytra")
+                                    .then(net.fabricmc.fabric.api.client.command.v2.ClientCommandManager
+                                            .literal("prediction")
+                                            .executes(context -> {
+                                                predictionEnabled = !predictionEnabled;
+                                                context.getSource().sendFeedback(net.minecraft.text.Text
+                                                        .literal("Toggle Elytra Prediction: " + predictionEnabled));
+                                                return 1;
+                                            })));
+                });
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             ClientPlayerEntity player = client.player;
             if (player == null)
@@ -78,9 +93,9 @@ public class ToggleElytraClient implements ClientModInitializer {
         if (slot != -1) {
             swapChestplate(client, player, slot);
             // Auto-glide
-            if (client.getNetworkHandler() != null) {
-                client.getNetworkHandler().sendPacket(new net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket(
-                        player, net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket.Mode.START_FALL_FLYING));
+            client.getNetworkHandler().sendPacket(new net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket(
+                    player, net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket.Mode.START_FALL_FLYING));
+            if (predictionEnabled) {
                 ((com.example.toggleelytra.mixin.EntityInvoker) player).invokeSetFlag(7, true);
             }
         }
