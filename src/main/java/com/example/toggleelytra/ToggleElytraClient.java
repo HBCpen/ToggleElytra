@@ -44,7 +44,7 @@ public class ToggleElytraClient implements ClientModInitializer {
 
             ItemStack chestItem = player.getEquippedStack(EquipmentSlot.CHEST);
 
-            if (player.isOnGround()) {
+            if (player.isOnGround() || player.hasVehicle()) {
                 // Grounded: Ensure Chestplate is equipped
                 if (isElytra(chestItem)) {
                     equipChestplate(client, player);
@@ -53,7 +53,7 @@ public class ToggleElytraClient implements ClientModInitializer {
                 // Airborne: Toggle on Jump Press
                 // Only toggle if we were NOT on the ground last tick (prevents toggle on jump
                 // takeoff)
-                if (jumpJustPressed && !wasOnGroundLastTick) {
+                if (jumpJustPressed && !wasOnGroundLastTick && !player.isTouchingWater()) {
                     if (isElytra(chestItem)) {
                         equipChestplate(client, player);
                     } else if (isChestplate(chestItem, player)) {
