@@ -28,40 +28,39 @@ public class SwapCheckMixin {
 
         if (client.world == null || client.player == null) return;
 
-        // Must be airborne and in a valid state for elytra flight
+        // Must be airborne and in a valid state
         if (player.isOnGround() || player.isClimbing() || player.isSleeping()
                 || player.hasStatusEffect(StatusEffects.LEVITATION)) {
-            // Don't clear jumpToggleRequested here - the player may still be
+            // Don't clear jumpToggleRequested - player may still be
             // on ground during the jump takeoff tick.
             return;
         }
 
-        // Step 1: Process manual jump-key toggle request - swap inventory
+        // Process manual jump-key toggle request (both directions)
         if (ToggleElytraClient.jumpToggleRequested) {
             ToggleElytraClient.jumpToggleRequested = false;
             ItemStack chestItem = player.getEquippedStack(EquipmentSlot.CHEST);
-            if (!ToggleElytraClient.isElytra(chestItem)) {
+
+            if (ToggleElytraClient.isElytra(chestItem)) {
+                // Elytra -> Chestplate
+                ToggleElytraClient.equipChestplate(client, player);
+            } else {
+                // Chestplate/empty -> Elytra
                 if (ToggleElytraClient.equipElytra(client, player)) {
-                    // Swap initiated - start retry counter for flight packet
                     ToggleElytraClient.flyRetryTicksRemaining = 5;
                 }
             }
         }
 
-        // Step 2: Retry sending START_FALL_FLYING until gliding starts or retries expire.
-        // In singleplayer, the server processes clickSlot synchronously but
-        // checkGliding() has already run this tick, so the flight packet may
-        // only succeed on the next tick. Retrying for a few ticks handles this.
+        // Retry sending START_FALL_FLYING until gliding starts or retries expire.
         if (ToggleElytraClient.flyRetryTicksRemaining > 0) {
             if (ToggleElytraClient.tryStartGliding(client, player)) {
                 if (player.isGliding()) {
-                    // Successfully gliding - stop retrying
                     ToggleElytraClient.flyRetryTicksRemaining = 0;
                 } else {
                     ToggleElytraClient.flyRetryTicksRemaining--;
                 }
             } else {
-                // Elytra not equipped (swap may not have taken effect yet)
                 ToggleElytraClient.flyRetryTicksRemaining--;
             }
         }

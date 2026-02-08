@@ -56,19 +56,10 @@ public class ToggleElytraClient implements ClientModInitializer {
             shouldWearChestplatePrevTick = shouldWearChestplate;
 
             // --- Manual toggle request via jump key ---
-            // Set the flag on jump press regardless of current ground state.
-            // The Mixin will check airborne state before acting, so if the player
-            // is still on ground when tickMovement runs, the flag persists until
-            // the player becomes airborne.
+            // Only set the flag here. ALL actual inventory swaps (both directions)
+            // are deferred to tickMovement() Mixin for correct packet timing.
             if (jumpJustPressed && !player.isTouchingWater()) {
-                ItemStack chestItem = player.getEquippedStack(EquipmentSlot.CHEST);
-                if (isElytra(chestItem)) {
-                    // Elytra -> Chestplate: immediate swap (no flight packet needed)
-                    equipChestplate(client, player);
-                } else {
-                    // Chestplate/empty -> Elytra: defer to tickMovement() Mixin
-                    jumpToggleRequested = true;
-                }
+                jumpToggleRequested = true;
             }
         });
     }
