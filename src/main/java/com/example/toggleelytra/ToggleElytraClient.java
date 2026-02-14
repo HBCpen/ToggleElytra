@@ -13,7 +13,14 @@ import net.minecraft.screen.slot.SlotActionType;
 public class ToggleElytraClient implements ClientModInitializer {
 
     private boolean wasJumpPressed = false;
-    private boolean shouldWearChestplatePrevTick = true;
+
+    // Debounce counter for ground detection.
+    // isOnGround() can flicker when walking off a block edge, creating false
+    // "landing" events. We only treat it as a real landing after the player
+    // has been consistently on-ground for GROUND_DEBOUNCE_TICKS ticks.
+    private int groundTickCounter = 0;
+    private static final int GROUND_DEBOUNCE_TICKS = 2;
+    private boolean landingHandled = false;
 
     // Flag set when user presses jump to request elytra equip.
     // Consumed by SwapCheckMixin in tickMovement() at the correct timing.
@@ -39,21 +46,32 @@ public class ToggleElytraClient implements ClientModInitializer {
             boolean jumpJustPressed = isJumpPressed && !wasJumpPressed;
             wasJumpPressed = isJumpPressed;
 
-            // --- Ground/Fluid detection ---
+            // --- Ground/Fluid detection with debounce ---
+            // isOnGround() can flicker (true->false->true) when walking off
+            // a block edge. To avoid false "landing" events that clear the
+            // jump toggle flag, we require the player to be on-ground for
+            // GROUND_DEBOUNCE_TICKS consecutive ticks before treating it as
+            // a real landing.
             boolean isOnGroundOrInFluid = player.isOnGround() || player.isSubmergedInWater();
-            boolean shouldWearChestplate = isOnGroundOrInFluid;
 
-            // --- Ground -> Chestplate swap (edge: only on air-to-ground transition) ---
-            if (shouldWearChestplate && !shouldWearChestplatePrevTick) {
+            if (isOnGroundOrInFluid) {
+                groundTickCounter++;
+            } else {
+                groundTickCounter = 0;
+                landingHandled = false;
+            }
+
+            // --- Ground -> Chestplate swap (debounced landing) ---
+            if (groundTickCounter >= GROUND_DEBOUNCE_TICKS && !landingHandled) {
+                landingHandled = true;
                 ItemStack chestItem = player.getEquippedStack(EquipmentSlot.CHEST);
                 if (isElytra(chestItem)) {
                     equipChestplate(client, player);
                 }
-                // Cancel any pending elytra requests on landing
+                // Cancel any pending elytra requests on confirmed landing
                 jumpToggleRequested = false;
                 flyRetryTicksRemaining = 0;
             }
-            shouldWearChestplatePrevTick = shouldWearChestplate;
 
             // --- Manual toggle request via jump key ---
             // Only set the flag here. ALL actual inventory swaps (both directions)
