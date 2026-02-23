@@ -46,23 +46,30 @@ public class ToggleElytraClient implements ClientModInitializer {
             boolean jumpJustPressed = isJumpPressed && !wasJumpPressed;
             wasJumpPressed = isJumpPressed;
 
-            // --- Ground/Fluid detection with debounce ---
+            // --- Fluid detection ---
+            // When in fluid (water/lava), the mod is completely disabled to
+            // allow elytra usage underwater and in lava. The ground counter
+            // is frozen so no auto-swap or state changes occur.
+            boolean isInFluid = player.isTouchingWater() || player.isInLava();
+
+            // --- Ground detection with debounce ---
             // isOnGround() can flicker (true->false->true) when walking off
             // a block edge. To avoid false "landing" events that clear the
             // jump toggle flag, we require the player to be on-ground for
             // GROUND_DEBOUNCE_TICKS consecutive ticks before treating it as
             // a real landing.
-            boolean isOnGroundOrInFluid = player.isOnGround() || player.isSubmergedInWater();
-
-            if (isOnGroundOrInFluid) {
+            if (!isInFluid && player.isOnGround()) {
                 groundTickCounter++;
-            } else {
+            } else if (!isInFluid) {
                 groundTickCounter = 0;
                 landingHandled = false;
             }
+            // When in fluid: freeze the ground counter (don't increment or
+            // reset), so the mod is fully inert.
 
             // --- Ground -> Chestplate swap (debounced landing) ---
-            if (groundTickCounter >= GROUND_DEBOUNCE_TICKS && !landingHandled) {
+            // Skip entirely when in fluid.
+            if (!isInFluid && groundTickCounter >= GROUND_DEBOUNCE_TICKS && !landingHandled) {
                 landingHandled = true;
                 ItemStack chestItem = player.getEquippedStack(EquipmentSlot.CHEST);
                 if (isElytra(chestItem)) {
@@ -76,7 +83,8 @@ public class ToggleElytraClient implements ClientModInitializer {
             // --- Manual toggle request via jump key ---
             // Only set the flag here. ALL actual inventory swaps (both directions)
             // are deferred to tickMovement() Mixin for correct packet timing.
-            if (jumpJustPressed && !player.isTouchingWater()) {
+            // Disabled in fluid - mod is inert when in water or lava.
+            if (jumpJustPressed && !isInFluid) {
                 jumpToggleRequested = true;
             }
         });

@@ -36,6 +36,13 @@ public class SwapCheckMixin {
             return;
         }
 
+        // Mod is completely inert when in fluid (water/lava).
+        // This is a safety guard in case jumpToggleRequested was set
+        // on the same tick the player entered fluid.
+        if (player.isTouchingWater() || player.isInLava()) {
+            return;
+        }
+
         // Process manual jump-key toggle request (both directions)
         if (ToggleElytraClient.jumpToggleRequested) {
             ToggleElytraClient.jumpToggleRequested = false;
