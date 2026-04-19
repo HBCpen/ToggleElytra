@@ -18,9 +18,8 @@ public class SwapCheckMixin {
         method = "tickMovement",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/client/network/ClientPlayerEntity;isGliding()Z",
-            ordinal = 1,
-            shift = At.Shift.BEFORE
+            target = "Lnet/minecraft/client/network/ClientPlayerEntity;checkGliding()Z",
+            shift = At.Shift.AFTER
         )
     )
     private void onAfterCheckGliding(CallbackInfo ci) {
