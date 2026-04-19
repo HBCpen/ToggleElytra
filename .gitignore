@@ -19,10 +19,12 @@ bin/
 
 # VS Code
 .vscode/
+.opencode/
 
 # Fabric
 run/
 .fabric/
+logs/
 
 # Local reverse-engineering / vendor artifacts
 third_party/
