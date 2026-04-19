@@ -23,3 +23,6 @@ bin/
 # Fabric
 run/
 .fabric/
+
+# Local reverse-engineering / vendor artifacts
+third_party/
