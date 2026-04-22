@@ -18,6 +18,46 @@ public class SwapCheckMixin {
         method = "tickMovement",
         at = @At(
             value = "INVOKE",
+            target = "Lnet/minecraft/client/network/ClientPlayerEntity;checkGliding()Z"
+        )
+    )
+    private void onBeforeCheckGliding(CallbackInfo ci) {
+        ClientPlayerEntity player = (ClientPlayerEntity) (Object) this;
+        MinecraftClient client = MinecraftClient.getInstance();
+
+        if (client.world == null || client.player == null) return;
+
+        if (player.isTouchingWater() || player.isInLava()) {
+            return;
+        }
+
+        if (player.isOnGround() || player.isClimbing() || player.isSleeping()
+                || player.hasStatusEffect(StatusEffects.LEVITATION)) {
+            return;
+        }
+
+        if (!ToggleElytraClient.jumpToggleRequested) {
+            return;
+        }
+
+        ToggleElytraClient.jumpToggleRequested = false;
+        ItemStack chestItem = player.getEquippedStack(EquipmentSlot.CHEST);
+
+        if (ToggleElytraClient.isElytra(chestItem)) {
+            // Elytra -> Chestplate
+            ToggleElytraClient.equipChestplate(client, player);
+        } else {
+            // Chestplate/empty -> Elytra
+            if (ToggleElytraClient.equipElytra(client, player)) {
+                ToggleElytraClient.flyRetryTicksRemaining = ToggleElytraClient.getFlyRetryMaxTicks();
+            }
+        }
+    }
+
+    @Inject(
+        method = "tickMovement",
+        at = @At(
+            value = "INVOKE",
             target = "Lnet/minecraft/client/network/ClientPlayerEntity;checkGliding()Z",
             shift = At.Shift.AFTER
         )
@@ -41,22 +81,6 @@ public class SwapCheckMixin {
         // on the same tick the player entered fluid.
         if (player.isTouchingWater() || player.isInLava()) {
             return;
-        }
-
-        // Process manual jump-key toggle request (both directions)
-        if (ToggleElytraClient.jumpToggleRequested) {
-            ToggleElytraClient.jumpToggleRequested = false;
-            ItemStack chestItem = player.getEquippedStack(EquipmentSlot.CHEST);
-
-            if (ToggleElytraClient.isElytra(chestItem)) {
-                // Elytra -> Chestplate
-                ToggleElytraClient.equipChestplate(client, player);
-            } else {
-                // Chestplate/empty -> Elytra
-                if (ToggleElytraClient.equipElytra(client, player)) {
-                    ToggleElytraClient.flyRetryTicksRemaining = 5;
-                }
-            }
         }
 
         // Retry sending START_FALL_FLYING until gliding starts or retries expire.

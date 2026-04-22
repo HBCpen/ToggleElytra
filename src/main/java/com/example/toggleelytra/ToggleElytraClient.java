@@ -12,7 +12,7 @@ import net.minecraft.screen.slot.SlotActionType;
 
 public class ToggleElytraClient implements ClientModInitializer {
 
-    private boolean wasJumpPressed = false;
+    private static boolean wasJumpPressed = false;
 
     // Debounce counter for ground detection.
     // isOnGround() can flicker when walking off a block edge, creating false
@@ -37,14 +37,25 @@ public class ToggleElytraClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+        ClientTickEvents.START_CLIENT_TICK.register(client -> {
             ClientPlayerEntity player = client.player;
             if (player == null || client.world == null) return;
 
-            // --- Jump key edge detection ---
             boolean isJumpPressed = client.options.jumpKey.isPressed();
             boolean jumpJustPressed = isJumpPressed && !wasJumpPressed;
             wasJumpPressed = isJumpPressed;
+
+            if (!jumpJustPressed) return;
+
+            boolean isInFluid = player.isTouchingWater() || player.isInLava();
+            if (!isInFluid) {
+                jumpToggleRequested = true;
+            }
+        });
+
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            ClientPlayerEntity player = client.player;
+            if (player == null || client.world == null) return;
 
             // --- Fluid detection ---
             // When in fluid (water/lava), the mod is completely disabled to
@@ -80,13 +91,6 @@ public class ToggleElytraClient implements ClientModInitializer {
                 flyRetryTicksRemaining = 0;
             }
 
-            // --- Manual toggle request via jump key ---
-            // Only set the flag here. ALL actual inventory swaps (both directions)
-            // are deferred to tickMovement() Mixin for correct packet timing.
-            // Disabled in fluid - mod is inert when in water or lava.
-            if (jumpJustPressed && !isInFluid) {
-                jumpToggleRequested = true;
-            }
         });
     }
 
@@ -135,6 +139,10 @@ public class ToggleElytraClient implements ClientModInitializer {
                 new ClientCommandC2SPacket(player, ClientCommandC2SPacket.Mode.START_FALL_FLYING));
         player.startGliding();
         return true;
+    }
+
+    public static int getFlyRetryMaxTicks() {
+        return FLY_RETRY_MAX_TICKS;
     }
 
     public static int findChestplate(ClientPlayerEntity player) {
