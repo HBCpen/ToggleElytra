@@ -6,10 +6,14 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.HitResult;
 
 public class ToggleElytraClient implements ClientModInitializer {
 
@@ -19,6 +23,7 @@ public class ToggleElytraClient implements ClientModInitializer {
     }
 
     private static boolean wasJumpPressed = false;
+    private static boolean wasUsePressed = false;
 
     // Debounce counter for ground detection.
     // isOnGround() can flicker when walking off a block edge, creating false
@@ -31,6 +36,9 @@ public class ToggleElytraClient implements ClientModInitializer {
     public static PendingSwapAction pendingSwapAction = null;
     public static boolean swapSuppressionArmed = false;
     private static boolean pendingGlideAfterSwap = false;
+    private static int pendingFireworkSlot = -1;
+    private static int pendingHotbarSlot = -1;
+    private static boolean fireworkSuppressionArmed = false;
 
     // Counter for retrying START_FALL_FLYING after elytra equip.
     // In singleplayer, the swap and flight packet may need to happen on
@@ -68,7 +76,17 @@ public class ToggleElytraClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             ClientPlayerEntity player = client.player;
-            if (player == null || client.world == null) return;
+            if (client.options.useKey.isPressed()) {
+                // Keep the latch set while the use key is held.
+            } else {
+                wasUsePressed = false;
+            }
+
+            if (player == null || client.world == null) {
+                clearPendingSwap();
+                clearPendingFireworkUse();
+                return;
+            }
 
             // --- Fluid detection ---
             // When in fluid (water/lava), the mod is completely disabled to
@@ -173,13 +191,50 @@ public class ToggleElytraClient implements ClientModInitializer {
     }
 
     public static boolean shouldSuppressMovementThisTick() {
-        return swapSuppressionArmed && pendingSwapAction != null;
+        return (swapSuppressionArmed && pendingSwapAction != null)
+                || (fireworkSuppressionArmed && pendingFireworkSlot != -1);
     }
 
     public static void clearPendingSwap() {
         pendingSwapAction = null;
         swapSuppressionArmed = false;
         pendingGlideAfterSwap = false;
+    }
+
+    public static void handleRightClick(MinecraftClient client) {
+        ClientPlayerEntity player = client.player;
+        if (player == null || !player.isGliding()) {
+            return;
+        }
+
+        if (wasUsePressed) {
+            return;
+        }
+        wasUsePressed = true;
+
+        if (player.getMainHandStack().getItem() == Items.FIREWORK_ROCKET
+                || player.getOffHandStack().getItem() == Items.FIREWORK_ROCKET) {
+            return;
+        }
+
+        if (client.crosshairTarget != null && client.crosshairTarget.getType() == HitResult.Type.BLOCK) {
+            return;
+        }
+
+        if (isUsableItem(player.getMainHandStack(), player) || isUsableItem(player.getOffHandStack(), player)) {
+            return;
+        }
+
+        if (player.isUsingItem()) {
+            return;
+        }
+
+        int fireworkSlot = findFireworkRocket(player.getInventory());
+        if (fireworkSlot == -1) {
+            return;
+        }
+
+        requestFireworkUse(player, fireworkSlot);
     }
 
     public static void consumePendingSwap(MinecraftClient client, ClientPlayerEntity player) {
@@ -212,6 +267,52 @@ public class ToggleElytraClient implements ClientModInitializer {
         }
     }
 
+    public static void clearPendingFireworkUse() {
+        pendingFireworkSlot = -1;
+        pendingHotbarSlot = -1;
+        fireworkSuppressionArmed = false;
+    }
+
+    public static void consumePendingFireworkUse(MinecraftClient client, ClientPlayerEntity player) {
+        if (pendingFireworkSlot == -1 || pendingHotbarSlot == -1) {
+            return;
+        }
+
+        if (client.interactionManager == null || !player.isGliding()) {
+            clearPendingFireworkUse();
+            return;
+        }
+
+        PlayerInventory inventory = player.getInventory();
+        if (pendingFireworkSlot < 0 || pendingFireworkSlot >= inventory.size()) {
+            clearPendingFireworkUse();
+            return;
+        }
+
+        if (pendingHotbarSlot < 0 || pendingHotbarSlot > 8) {
+            clearPendingFireworkUse();
+            return;
+        }
+
+        ItemStack stack = inventory.getStack(pendingFireworkSlot);
+        if (stack.getItem() != Items.FIREWORK_ROCKET) {
+            clearPendingFireworkUse();
+            return;
+        }
+
+        int sourceSlotId = convertInventoryIndexToScreenSlot(pendingFireworkSlot);
+        if (sourceSlotId == -1) {
+            clearPendingFireworkUse();
+            return;
+        }
+
+        int syncId = player.playerScreenHandler.syncId;
+        client.interactionManager.clickSlot(syncId, sourceSlotId, pendingHotbarSlot, SlotActionType.SWAP, player);
+        client.interactionManager.interactItem(player, Hand.MAIN_HAND);
+        client.interactionManager.clickSlot(syncId, sourceSlotId, pendingHotbarSlot, SlotActionType.SWAP, player);
+        clearPendingFireworkUse();
+    }
+
     public static int findChestplate(ClientPlayerEntity player) {
         // PlayerScreenHandler slots:
         // 0-4: Crafting, 5: Helm, 6: Chest, 7: Legs, 8: Boots
@@ -232,6 +333,63 @@ public class ToggleElytraClient implements ClientModInitializer {
                 return i;
             }
         }
+        return -1;
+    }
+
+    private static boolean isUsableItem(ItemStack stack, ClientPlayerEntity player) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+
+        if (stack.getItem() instanceof BlockItem) {
+            return true;
+        }
+
+        if (stack.getMaxUseTime(player) > 0) {
+            return true;
+        }
+
+        return stack.getItem() == Items.ENDER_PEARL
+                || stack.getItem() == Items.SNOWBALL
+                || stack.getItem() == Items.EGG
+                || stack.getItem() == Items.WIND_CHARGE
+                || stack.getItem() == Items.SPLASH_POTION
+                || stack.getItem() == Items.LINGERING_POTION;
+    }
+
+    private static int findFireworkRocket(PlayerInventory inventory) {
+        for (int i = 0; i < inventory.size(); i++) {
+            if (inventory.getStack(i).getItem() == Items.FIREWORK_ROCKET) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static void requestFireworkUse(ClientPlayerEntity player, int slotIndex) {
+        int currentSlotIndex = player.getInventory().getSelectedSlot();
+        if (slotIndex == currentSlotIndex || pendingFireworkSlot != -1) {
+            return;
+        }
+
+        pendingFireworkSlot = slotIndex;
+        pendingHotbarSlot = currentSlotIndex;
+        fireworkSuppressionArmed = true;
+    }
+
+    private static int convertInventoryIndexToScreenSlot(int playerInventoryIndex) {
+        if (playerInventoryIndex >= 0 && playerInventoryIndex <= 8) {
+            return 36 + playerInventoryIndex;
+        }
+
+        if (playerInventoryIndex >= 9 && playerInventoryIndex <= 35) {
+            return playerInventoryIndex;
+        }
+
+        if (playerInventoryIndex == 40) {
+            return 45;
+        }
+
         return -1;
     }
 

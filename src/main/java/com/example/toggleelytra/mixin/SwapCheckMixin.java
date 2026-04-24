@@ -25,21 +25,18 @@ public class SwapCheckMixin {
 
         if (client.world == null || client.player == null) return;
 
-        if (ToggleElytraClient.pendingSwapAction == null) return;
-
-        if (ToggleElytraClient.pendingSwapAction == ToggleElytraClient.PendingSwapAction.EQUIP_ELYTRA
-                && !ToggleElytraClient.isValidAirborneSwapState(player)) {
-            ToggleElytraClient.clearPendingSwap();
-            return;
+        if (ToggleElytraClient.pendingSwapAction != null) {
+            if (ToggleElytraClient.pendingSwapAction == ToggleElytraClient.PendingSwapAction.EQUIP_ELYTRA
+                    && !ToggleElytraClient.isValidAirborneSwapState(player)) {
+                ToggleElytraClient.clearPendingSwap();
+            } else if ((player.isTouchingWater() || player.isInLava())
+                    && ToggleElytraClient.pendingSwapAction == ToggleElytraClient.PendingSwapAction.EQUIP_CHESTPLATE) {
+                ToggleElytraClient.clearPendingSwap();
+            } else {
+                ToggleElytraClient.consumePendingSwap(client, player);
+            }
         }
-
-        if ((player.isTouchingWater() || player.isInLava())
-                && ToggleElytraClient.pendingSwapAction == ToggleElytraClient.PendingSwapAction.EQUIP_CHESTPLATE) {
-            ToggleElytraClient.clearPendingSwap();
-            return;
-        }
-
-        ToggleElytraClient.consumePendingSwap(client, player);
+        ToggleElytraClient.consumePendingFireworkUse(client, player);
     }
 
     @Inject(method = "tickMovement", at = @At("TAIL"))
