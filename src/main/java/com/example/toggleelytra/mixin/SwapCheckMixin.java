@@ -11,8 +11,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ClientPlayerEntity.class)
 public class SwapCheckMixin {
 
-    @Inject(method = "tickMovement", at = @At("HEAD"))
-    private void onTickMovementHead(CallbackInfo ci) {
+    @Inject(
+        method = "tick",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/client/network/ClientPlayerEntity;sendMovementPackets()V",
+            shift = At.Shift.AFTER
+        )
+    )
+    private void onAfterSendMovementPackets(CallbackInfo ci) {
         ClientPlayerEntity player = (ClientPlayerEntity) (Object) this;
         MinecraftClient client = MinecraftClient.getInstance();
 

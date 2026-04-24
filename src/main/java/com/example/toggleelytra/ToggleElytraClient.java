@@ -138,9 +138,8 @@ public class ToggleElytraClient implements ClientModInitializer {
     }
 
     /**
-     * Attempt to start gliding. Returns true if successful.
-     * Should ONLY be called from within tickMovement() (via Mixin)
-     * when the player already has an elytra equipped.
+     * Attempt to start gliding. Returns true if the player has, or can start,
+     * gliding with the currently equipped elytra.
      */
     public static boolean tryStartGliding(MinecraftClient client, ClientPlayerEntity player) {
         if (!isElytra(player.getEquippedStack(EquipmentSlot.CHEST))) return false;
@@ -186,6 +185,7 @@ public class ToggleElytraClient implements ClientModInitializer {
     public static void consumePendingSwap(MinecraftClient client, ClientPlayerEntity player) {
         if (pendingSwapAction == null) return;
 
+        PendingSwapAction action = pendingSwapAction;
         boolean swapSucceeded = switch (pendingSwapAction) {
             case EQUIP_ELYTRA -> equipElytra(client, player);
             case EQUIP_CHESTPLATE -> {
@@ -199,12 +199,16 @@ public class ToggleElytraClient implements ClientModInitializer {
         };
 
         boolean shouldRetryGlide = swapSucceeded
-                && pendingSwapAction == PendingSwapAction.EQUIP_ELYTRA
+                && action == PendingSwapAction.EQUIP_ELYTRA
                 && pendingGlideAfterSwap;
 
         clearPendingSwap();
         if (shouldRetryGlide) {
-            flyRetryTicksRemaining = getFlyRetryMaxTicks();
+            if (tryStartGliding(client, player) && player.isGliding()) {
+                flyRetryTicksRemaining = 0;
+            } else {
+                flyRetryTicksRemaining = getFlyRetryMaxTicks();
+            }
         }
     }
 
