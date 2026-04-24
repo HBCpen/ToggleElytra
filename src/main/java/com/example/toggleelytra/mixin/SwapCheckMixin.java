@@ -3,9 +3,6 @@ package com.example.toggleelytra.mixin;
 import com.example.toggleelytra.ToggleElytraClient;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -14,72 +11,38 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ClientPlayerEntity.class)
 public class SwapCheckMixin {
 
-    @Inject(
-        method = "tickMovement",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/network/ClientPlayerEntity;checkGliding()Z"
-        )
-    )
-    private void onBeforeCheckGliding(CallbackInfo ci) {
+    @Inject(method = "tickMovement", at = @At("HEAD"))
+    private void onTickMovementHead(CallbackInfo ci) {
         ClientPlayerEntity player = (ClientPlayerEntity) (Object) this;
         MinecraftClient client = MinecraftClient.getInstance();
 
         if (client.world == null || client.player == null) return;
 
-        if (player.isTouchingWater() || player.isInLava()) {
+        if (ToggleElytraClient.pendingSwapAction == null) return;
+
+        if (ToggleElytraClient.pendingSwapAction == ToggleElytraClient.PendingSwapAction.EQUIP_ELYTRA
+                && !ToggleElytraClient.isValidAirborneSwapState(player)) {
+            ToggleElytraClient.clearPendingSwap();
             return;
         }
 
-        if (player.isOnGround() || player.isClimbing() || player.isSleeping()
-                || player.hasStatusEffect(StatusEffects.LEVITATION)) {
+        if ((player.isTouchingWater() || player.isInLava())
+                && ToggleElytraClient.pendingSwapAction == ToggleElytraClient.PendingSwapAction.EQUIP_CHESTPLATE) {
+            ToggleElytraClient.clearPendingSwap();
             return;
         }
 
-        if (!ToggleElytraClient.jumpToggleRequested) {
-            return;
-        }
-
-        ToggleElytraClient.jumpToggleRequested = false;
-        ItemStack chestItem = player.getEquippedStack(EquipmentSlot.CHEST);
-
-        if (ToggleElytraClient.isElytra(chestItem)) {
-            // Elytra -> Chestplate
-            ToggleElytraClient.equipChestplate(client, player);
-        } else {
-            // Chestplate/empty -> Elytra
-            if (ToggleElytraClient.equipElytra(client, player)) {
-                ToggleElytraClient.flyRetryTicksRemaining = ToggleElytraClient.getFlyRetryMaxTicks();
-            }
-        }
+        ToggleElytraClient.consumePendingSwap(client, player);
     }
 
-    @Inject(
-        method = "tickMovement",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/network/ClientPlayerEntity;checkGliding()Z",
-            shift = At.Shift.AFTER
-        )
-    )
-    private void onAfterCheckGliding(CallbackInfo ci) {
+    @Inject(method = "tickMovement", at = @At("TAIL"))
+    private void onTickMovementTail(CallbackInfo ci) {
         ClientPlayerEntity player = (ClientPlayerEntity) (Object) this;
         MinecraftClient client = MinecraftClient.getInstance();
 
         if (client.world == null || client.player == null) return;
 
-        // Must be airborne and in a valid state
-        if (player.isOnGround() || player.isClimbing() || player.isSleeping()
-                || player.hasStatusEffect(StatusEffects.LEVITATION)) {
-            // Don't clear jumpToggleRequested - player may still be
-            // on ground during the jump takeoff tick.
-            return;
-        }
-
-        // Mod is completely inert when in fluid (water/lava).
-        // This is a safety guard in case jumpToggleRequested was set
-        // on the same tick the player entered fluid.
-        if (player.isTouchingWater() || player.isInLava()) {
+        if (!ToggleElytraClient.isValidAirborneSwapState(player)) {
             return;
         }
 

@@ -5,12 +5,18 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.screen.slot.SlotActionType;
 
 public class ToggleElytraClient implements ClientModInitializer {
+
+    public enum PendingSwapAction {
+        EQUIP_ELYTRA,
+        EQUIP_CHESTPLATE
+    }
 
     private static boolean wasJumpPressed = false;
 
@@ -22,10 +28,9 @@ public class ToggleElytraClient implements ClientModInitializer {
     private static final int GROUND_DEBOUNCE_TICKS = 2;
     private boolean landingHandled = false;
 
-    // Flag set when user presses jump to request elytra equip.
-    // Consumed by SwapCheckMixin in tickMovement() at the correct timing.
-    // The Mixin checks airborne/valid state before actually equipping.
-    public static boolean jumpToggleRequested = false;
+    public static PendingSwapAction pendingSwapAction = null;
+    public static boolean swapSuppressionArmed = false;
+    private static boolean pendingGlideAfterSwap = false;
 
     // Counter for retrying START_FALL_FLYING after elytra equip.
     // In singleplayer, the swap and flight packet may need to happen on
@@ -48,9 +53,17 @@ public class ToggleElytraClient implements ClientModInitializer {
             if (!jumpJustPressed) return;
 
             boolean isInFluid = player.isTouchingWater() || player.isInLava();
-            if (!isInFluid) {
-                jumpToggleRequested = true;
+            if (isInFluid || !isValidAirborneSwapState(player)) return;
+
+            ItemStack chestItem = player.getEquippedStack(EquipmentSlot.CHEST);
+            if (isElytra(chestItem)) {
+                if (player.isGliding()) {
+                    requestSwap(PendingSwapAction.EQUIP_CHESTPLATE, false);
+                }
+                return;
             }
+
+            requestSwap(PendingSwapAction.EQUIP_ELYTRA, true);
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -65,10 +78,9 @@ public class ToggleElytraClient implements ClientModInitializer {
 
             // --- Ground detection with debounce ---
             // isOnGround() can flicker (true->false->true) when walking off
-            // a block edge. To avoid false "landing" events that clear the
-            // jump toggle flag, we require the player to be on-ground for
-            // GROUND_DEBOUNCE_TICKS consecutive ticks before treating it as
-            // a real landing.
+            // a block edge. To avoid false landing events, we require the
+            // player to be on-ground for GROUND_DEBOUNCE_TICKS consecutive
+            // ticks before treating it as a real landing.
             if (!isInFluid && player.isOnGround()) {
                 groundTickCounter++;
             } else if (!isInFluid) {
@@ -84,10 +96,9 @@ public class ToggleElytraClient implements ClientModInitializer {
                 landingHandled = true;
                 ItemStack chestItem = player.getEquippedStack(EquipmentSlot.CHEST);
                 if (isElytra(chestItem)) {
-                    equipChestplate(client, player);
+                    clearPendingSwap();
+                    requestSwap(PendingSwapAction.EQUIP_CHESTPLATE, false);
                 }
-                // Cancel any pending elytra requests on confirmed landing
-                jumpToggleRequested = false;
                 flyRetryTicksRemaining = 0;
             }
 
@@ -143,6 +154,58 @@ public class ToggleElytraClient implements ClientModInitializer {
 
     public static int getFlyRetryMaxTicks() {
         return FLY_RETRY_MAX_TICKS;
+    }
+
+    public static boolean isValidAirborneSwapState(ClientPlayerEntity player) {
+        return !player.isOnGround()
+                && !player.isClimbing()
+                && !player.isSleeping()
+                && !player.hasStatusEffect(StatusEffects.LEVITATION)
+                && !player.isTouchingWater()
+                && !player.isInLava();
+    }
+
+    public static void requestSwap(PendingSwapAction action, boolean glideAfterSwap) {
+        if (pendingSwapAction != null) return;
+
+        pendingSwapAction = action;
+        swapSuppressionArmed = true;
+        pendingGlideAfterSwap = glideAfterSwap;
+    }
+
+    public static boolean shouldSuppressMovementThisTick() {
+        return swapSuppressionArmed && pendingSwapAction != null;
+    }
+
+    public static void clearPendingSwap() {
+        pendingSwapAction = null;
+        swapSuppressionArmed = false;
+        pendingGlideAfterSwap = false;
+    }
+
+    public static void consumePendingSwap(MinecraftClient client, ClientPlayerEntity player) {
+        if (pendingSwapAction == null) return;
+
+        boolean swapSucceeded = switch (pendingSwapAction) {
+            case EQUIP_ELYTRA -> equipElytra(client, player);
+            case EQUIP_CHESTPLATE -> {
+                int slot = findChestplate(player);
+                if (slot == -1) {
+                    yield false;
+                }
+                swapChestSlot(client, player, slot);
+                yield true;
+            }
+        };
+
+        boolean shouldRetryGlide = swapSucceeded
+                && pendingSwapAction == PendingSwapAction.EQUIP_ELYTRA
+                && pendingGlideAfterSwap;
+
+        clearPendingSwap();
+        if (shouldRetryGlide) {
+            flyRetryTicksRemaining = getFlyRetryMaxTicks();
+        }
     }
 
     public static int findChestplate(ClientPlayerEntity player) {
