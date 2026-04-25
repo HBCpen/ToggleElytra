@@ -52,9 +52,14 @@ public class ToggleElytraClient implements ClientModInitializer {
     public void onInitializeClient() {
         ClientTickEvents.START_CLIENT_TICK.register(client -> {
             ClientPlayerEntity player = client.player;
+            boolean isJumpPressed = client.options.jumpKey.isPressed();
+            if (client.currentScreen != null) {
+                wasJumpPressed = isJumpPressed;
+                return;
+            }
+
             if (player == null || client.world == null) return;
 
-            boolean isJumpPressed = client.options.jumpKey.isPressed();
             boolean jumpJustPressed = isJumpPressed && !wasJumpPressed;
             wasJumpPressed = isJumpPressed;
 
@@ -85,6 +90,13 @@ public class ToggleElytraClient implements ClientModInitializer {
             if (player == null || client.world == null) {
                 clearPendingSwap();
                 clearPendingFireworkUse();
+                return;
+            }
+
+            if (client.currentScreen != null) {
+                clearPendingSwap();
+                clearPendingFireworkUse();
+                flyRetryTicksRemaining = 0;
                 return;
             }
 
@@ -203,7 +215,7 @@ public class ToggleElytraClient implements ClientModInitializer {
 
     public static void handleRightClick(MinecraftClient client) {
         ClientPlayerEntity player = client.player;
-        if (player == null || !player.isGliding()) {
+        if (client.currentScreen != null || player == null || !player.isGliding()) {
             return;
         }
 

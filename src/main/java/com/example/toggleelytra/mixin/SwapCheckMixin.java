@@ -24,6 +24,11 @@ public class SwapCheckMixin {
         MinecraftClient client = MinecraftClient.getInstance();
 
         if (client.world == null || client.player == null) return;
+        if (client.currentScreen != null) {
+            ToggleElytraClient.clearPendingSwap();
+            ToggleElytraClient.clearPendingFireworkUse();
+            return;
+        }
 
         if (ToggleElytraClient.pendingSwapAction != null) {
             if (ToggleElytraClient.pendingSwapAction == ToggleElytraClient.PendingSwapAction.EQUIP_ELYTRA
@@ -45,6 +50,9 @@ public class SwapCheckMixin {
         MinecraftClient client = MinecraftClient.getInstance();
 
         if (client.world == null || client.player == null) return;
+        if (client.currentScreen != null) {
+            return;
+        }
 
         if (!ToggleElytraClient.isValidAirborneSwapState(player)) {
             return;
